@@ -102,3 +102,4 @@ ENV/
 
 # configurations
 *.cfg
+.session

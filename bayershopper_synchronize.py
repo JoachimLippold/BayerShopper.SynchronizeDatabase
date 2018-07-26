@@ -13,6 +13,22 @@ der Sit&Watch-Datenbank ab:
     
 Die Liste der Apotheken werden zusätzlich als Excel-Datei exportiert.
 
+Permission is hereby granted, free of charge, to any person obtaining a copy of this 
+software and associated documentation files (the "Software"), to deal in the Software 
+without restriction, including without limitation the rights to use, copy, modify, 
+merge, publish, distribute, sublicense, and/or sell copies of the Software, and to 
+permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or 
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE 
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+OTHERWISE, ARISING FROM, OUT OF OR IN SOURCEECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+DEALINGS IN THE SOFTWARE.
+
 @Copyright 2018 - Sit&Watch Media Group GmbH
 @Author Joachim Lippold - lippold@sit-watch.de
 @Date 2018-04-04
@@ -30,6 +46,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'classes
 import datetime
 import logging
 import json
+import pprint
 
 from optparse import OptionParser
 from ConfigParser import SafeConfigParser
@@ -40,6 +57,7 @@ import requests
 import psycopg2, psycopg2.extensions, psycopg2.extras
 
 from get_inspections import GetInspections
+from swdb import SWDB
 
 class App(object):
     u"""
@@ -54,6 +72,7 @@ class App(object):
     _instance, _session, _session_id, _sf_instance, _session_id, _sf_instance = (None,)*6
     _loggingLevels = { logging.NOTSET: "NOTSET", logging.DEBUG: "DEBUG", logging.INFO: "INFO",
             logging.WARNING: "WARNING", logging.ERROR: "ERROR", logging.CRITICAL: "CRITICAL" }
+    __swdb = (None,)
 
     """ public """
     config, logger, options, args, session, salesforce, postgresql = (None,)*7
@@ -143,6 +162,14 @@ class App(object):
 
                 -h, --help
                     Hilfetext
+
+                -c, --commit
+                    Beende Transaktion mit 'commit'. Ohne diese Option wird die Transaktion
+                    am Ende mit Rollback wieder zurückgerollt. Damit ist die Datenbank
+                    (fast) wie im Zustand wie zuvor. Eine Einschränkung: die Sequenz 
+                    outlet_id_seq wird für neu anzulegende Outlets inkrementiert. Der Wert
+                    für die nächste ID wird bei einem Rollback jedoch nicht auf den vorherigen
+                    Wert zurückgesetzt. Dies ist ein dokumentiertes Verhalten von PostreSQL
         """
         USAGE = "usage: %prog [options] tourdate"
         DESCRIPTION = u"""
@@ -155,9 +182,13 @@ class App(object):
                 help="Loglevel: [" + ', '.join([value for key, value in self._loggingLevels.items()]) + ")")
         parser.add_option("-l", "--logging", dest="logging", default=self.APPNAME + ".log",
                 help="Name und Pfad der Logdatei")
-        parser.add_option("-q", "--quiet", dest="quiet", action="store_true", help=u"Unterdrücke Fortschrittsbalken")
+        parser.add_option("-q", "--quiet", dest="quiet", action="store_true", help=u"Unterdrücke Ausgaben auf die Kommandozeile")
         parser.add_option("-o", "--outfile", dest="outfile", 
                 help=u"Zusätzliche Ausgabe der neuen Apotheken in eine Excel-Datei")
+        parser.add_option("-c", "--commit", dest="commit", action="store_true", default=False,
+                help=u"""Transaktion mit commit beenden und Änderungen in die Datenbank übernehmen. Andernfalls
+werden die Änderungen wieder zurückgerollt. Bei einem Fehler werden die Änderungen
+ebenfalls wieder zurückgerollt.""")
 
         (self.options, self.args) = parser.parse_args()
 
@@ -195,11 +226,12 @@ class App(object):
                 host=self.config.get('postgresql', 'host'),
                 user=self.config.get('postgresql', 'user'),
                 password=self.config.get('postgresql', 'password'))
-        self.postgresql.commit()
+        self.postgresql.set_session(autocommit=False)
         self.postgresql.set_client_encoding('UTF8')
-        self.postgresql.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+        self.postgresql.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_READ_COMMITTED)
         
         self.logger.debug('Connection to PostgreSQL-Server established')
+        self.__swdb = SWDB(self)
 
 
     def checkArguments(self):
@@ -220,6 +252,79 @@ class App(object):
 
     def dispatch(self):
         inspections = GetInspections(self, self.args[0])
+        numberOfEntries = len(inspections.getInspections())
+
+        u"""Commit all pending queries to the database..."""
+        self.postgresql.commit()
+
+        try:
+            self.__swdb.setAllOutletsInactive()
+            u"""Show entries on console"""
+            print(u"Markierte Datensätze in der Salesforce-Datenbank")
+            for idx, entry in enumerate(inspections.getInspections()):
+                if not self.options.quiet:
+                    print(u"-[{:4d}]-{:s}+{:s}+{:s}" . format(idx, "-"*22, "-"*19, "-"*80))
+                    inspections.printRecord(entry)
+
+                if not self.__swdb.entryExists(entry[u'Shopper_Contract__c']):
+                    self.logger.debug(u"Entry does not exist -> create new entry...")
+                    newId = self.__swdb.insertOutlet(entry)
+                    self.__swdb.insertApoMasterdata(entry, newId)
+
+                self.__swdb.setOutletStatus(entry[u'Shopper_Contract__c'], True)
+
+
+            activePharmacies = self.__swdb.getActivePharmacies()
+            print(u"\n\nAktive Datensätze in der Sit&Watch-Datenbank nach Abgleich mit Salesforce")
+            for cnt, pharmacy in enumerate(sorted(activePharmacies)):
+                print(u"-[{:4d}]-{:s}+{:s}+{:s}" . format(cnt, "-"*10, "-"*28, "-"*80))
+                for key in pharmacy.keys():
+                    if type(pharmacy[key]) is int:
+                        print(u"{:17s} | {:26s} | {:d}" . format(key, type(pharmacy[key]), pharmacy[key]))
+                    elif isinstance(pharmacy[key], (str, unicode)):
+                        print(u"{:17s} | {:26s} | {:s}" . format(key, type(pharmacy[key]), pharmacy[key]))
+                    elif isinstance(pharmacy[key], (datetime.datetime,)):
+                        print(u"{:17s} | {:26s} | {:s}" . format(key, type(pharmacy[key]), pharmacy[key].strftime("%Y-%m-%dT%H:%M:%SZ")))
+
+            print(u"\n\n{:d} rows found." . format(len(activePharmacies)))
+
+
+        except Exception, msg:
+            self.postgresql.rollback()
+            self.logger.critical(msg)
+            print(u"Exception occured -> rollback transaction...")
+        else:
+            if self.options.commit:
+                action = u"commit" 
+                self.postgresql.commit()
+            else:
+                action = u"rollback"
+                self.postgresql.rollback()
+
+            self.logger.debug(u"All queries successful -> {:s} transaction" . format(action))
+            print(u"All queries successful -> {:s} transaction" . format(action))
+            
+
+
+    def printProgressBar(self, iteration, total, prefix = '', suffix = '', decimals = 1, length = 70, fill = '#'):
+        u"""
+        Call in a loop to create terminal progress bar
+        @params:
+            iteration   - Required : current iteration (Int)
+            total       - Required : total iterations (Int)
+            prefix      - Optional : prefix string (Str)
+            suffix      - Optional : suffix string (Str)
+            decimals    - Optional : positive number of decimals in percent complete (Int)
+            length      - Optional : character length of bar (Int)
+            fill        - Optional : bar fill character (Str)
+        """
+        percent = ("{0:." + str(decimals) + "f}") . format(100 * (iteration / float(total)))
+        filledLength = int(length * iteration // total)
+        bar = fill * filledLength + '-' * (length - filledLength)
+        sys.stdout.write('\r{:s} [{:s}] {:s}% {:s}' . format(prefix, bar, percent, suffix))
+        sys.stdout.flush()
+        if iteration == total:
+            sys.stdout.write("\n\n")
 
 
     def __new__(self, *args, **kwargs):
