@@ -64,7 +64,7 @@ class App(object):
     Initialisierung, Auswertung der Optionen und Argumente, Verarbeitung der Daten
     """
     APPNAME = os.path.splitext(os.path.abspath(sys.argv[0]))[0]
-    APPVERSION = "1.0"
+    APPVERSION = "1.0.1"
 
     """ private """
     _instance, _session, _session_id, _sf_instance, _session_id, _sf_instance = (None,)*6
