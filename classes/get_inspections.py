@@ -52,7 +52,6 @@ class GetInspections(object):
                 WHERE CreatedDate > {:1} AND CreatedDate < {:2} AND Status__c = 'Open'
         """ . format(self.__from_date.strftime(self.SOQL_DATEFORMAT), self.__to_date.strftime(self.SOQL_DATEFORMAT))
 
-        self.__app.logger.debug("query = {}" . format(query))
         records = self.__app.salesforce.query_all(query)
 
         for record in records['records']:

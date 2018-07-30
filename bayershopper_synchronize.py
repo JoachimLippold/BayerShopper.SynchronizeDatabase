@@ -45,8 +45,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'classes
 
 import datetime
 import logging
-import json
-import pprint
 
 from optparse import OptionParser
 from ConfigParser import SafeConfigParser
@@ -170,6 +168,9 @@ class App(object):
                     outlet_id_seq wird für neu anzulegende Outlets inkrementiert. Der Wert
                     für die nächste ID wird bei einem Rollback jedoch nicht auf den vorherigen
                     Wert zurückgesetzt. Dies ist ein dokumentiertes Verhalten von PostreSQL
+
+                -o, --outfile
+                    Ausgabe der Apotheken in eine CSV-Datei
         """
         USAGE = "usage: %prog [options] tourdate"
         DESCRIPTION = u"""
@@ -184,7 +185,7 @@ class App(object):
                 help="Name und Pfad der Logdatei")
         parser.add_option("-q", "--quiet", dest="quiet", action="store_true", help=u"Unterdrücke Ausgaben auf die Kommandozeile")
         parser.add_option("-o", "--outfile", dest="outfile", 
-                help=u"Zusätzliche Ausgabe der neuen Apotheken in eine Excel-Datei")
+                help=u"Zusätzliche Ausgabe der neuen Apotheken in eine CSV-Datei")
         parser.add_option("-c", "--commit", dest="commit", action="store_true", default=False,
                 help=u"""Transaktion mit commit beenden und Änderungen in die Datenbank übernehmen. Andernfalls
 werden die Änderungen wieder zurückgerollt. Bei einem Fehler werden die Änderungen
@@ -273,21 +274,11 @@ ebenfalls wieder zurückgerollt.""")
 
                 self.__swdb.setOutletStatus(entry[u'Shopper_Contract__c'], True)
 
-            activePharmacies = self.__swdb.getActivePharmacies()
-            print(u"\n\nAktive Datensätze in der Sit&Watch-Datenbank nach Abgleich mit Salesforce")
-            for cnt, pharmacy in enumerate(sorted(activePharmacies)):
-                print(u"-[{:4d}]-{:s}+{:s}+{:s}" . format(cnt, "-"*10, "-"*28, "-"*80))
-                for key in pharmacy.keys():
-                    if type(pharmacy[key]) is int:
-                        print(u"{:17s} | {:26s} | {:d}" . format(key, type(pharmacy[key]), pharmacy[key]))
-                    elif isinstance(pharmacy[key], (str, unicode)):
-                        print(u"{:17s} | {:26s} | {:s}" . format(key, type(pharmacy[key]), pharmacy[key]))
-                    elif isinstance(pharmacy[key], (datetime.datetime,)):
-                        print(u"{:17s} | {:26s} | {:s}" . format(key, type(pharmacy[key]), 
-				pharmacy[key].strftime("%Y-%m-%dT%H:%M:%SZ")))
+            if not self.options.quiet:
+                self.writeActivePharmaciesToStdout()
 
-            print(u"\n\n{:d} rows found." . format(len(activePharmacies)))
-
+            if logging:
+                self.exportAsCsv()
 
         except Exception, msg:
             self.postgresql.rollback()
@@ -304,6 +295,44 @@ ebenfalls wieder zurückgerollt.""")
             self.logger.debug(u"All queries successful -> {:s} transaction" . format(action))
             print(u"All queries successful -> {:s} transaction" . format(action))
             
+
+    def writeActivePharmaciesToStdout(self):
+        u"""Writes active pharmacies from swdb to console"""
+        activePharmacies = self.__swdb.getActivePharmacies()
+        print(u"\n\nAktive Datensätze in der Sit&Watch-Datenbank nach Abgleich mit Salesforce")
+        for cnt, pharmacy in enumerate(sorted(activePharmacies)):
+            print(u"-[{:4d}]-{:s}+{:s}+{:s}" . format(cnt, "-"*10, "-"*28, "-"*80))
+            for key in pharmacy.keys():
+                if type(pharmacy[key]) is int:
+                    print(u"{:17s} | {:26s} | {:d}" . format(key, type(pharmacy[key]), pharmacy[key]))
+                elif isinstance(pharmacy[key], (str, unicode)):
+                    print(u"{:17s} | {:26s} | {:s}" . format(key, type(pharmacy[key]), pharmacy[key]))
+                elif isinstance(pharmacy[key], (datetime.datetime,)):
+                    print(u"{:17s} | {:26s} | {:s}" . format(key, type(pharmacy[key]), 
+                            pharmacy[key].strftime("%Y-%m-%dT%H:%M:%SZ")))
+
+        print(u"\n\n{:d} rows found." . format(len(activePharmacies)))
+
+
+    def exportAsCsv(self):
+        u"""
+            Exports data from swdb as csv to outfile. Writes csv in utf-8
+
+            @params None
+            @returns None
+            @throws Exception
+        """
+        import unicodecsv as csv
+
+        activePharmacies = self.__swdb.getActivePharmaciesCursor()
+
+        with open(self.options.outfile, 'wb') as csvfile:
+            csvwriter = csv.writer(csvfile, dialect='excel')
+            u"""Write headings..."""
+            csvwriter.writerow([Column[0] for Column in activePharmacies.description])
+            u"""Write data rows..."""
+            for row in sorted(activePharmacies.fetchall()):
+                csvwriter.writerow(row)
 
 
     def printProgressBar(self, iteration, total, prefix = '', suffix = '', decimals = 1, length = 70, fill = '#'):

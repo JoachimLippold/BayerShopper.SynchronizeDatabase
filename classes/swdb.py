@@ -35,7 +35,6 @@ class SWDB(object):
             @return boolean
         """
         query = u"""SELECT id FROM apo_masterdata WHERE byr_salesforce_id = %(salesforce_id)s"""
-        self.__app.logger.debug("SELECT id FROM apo_masterdata WHERE byr_salesforce_id = '{:s}'" . format(id))
 
         try:
             cur = self.__app.postgresql.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -55,12 +54,14 @@ class SWDB(object):
             @return pharmacies[]
         """
         res = []
-        query = u"""SELECT o.id, o.name, o.strasse, o.plz, o.ort, o.bundesland, o.email, 
+        query = u"""SELECT o.id, o.name, o.strasse, o.plz, o.ort, o.email, 
                 o.telefon1, o.outletart, am.byr_salesforce_id, am.byr_name, am.byr_status,
                 am.byr_shelf_details, am.byr_contact_c, am.byr_is_deleted, am.byr_active,
-                am.fwr_height, am.fwr_width, am.byr_shopper_termination, 
-                am.byr_shopper_termination_reason, o.create_time
-            FROM apo_masterdata am LEFT JOIN outlet o ON o.id = am.id
+                cm.firma1 AS citymanager, o.create_time
+            FROM apo_masterdata am 
+                LEFT JOIN outlet o ON o.id = am.id
+                LEFT JOIN outlet_gebietsleiter og ON og.outlet = o.id
+                LEFT JOIN stammdaten cm ON cm.id = og.gebietsleiter
             WHERE o.aktiv
             ORDER BY o.ort, o.name"""
 
@@ -74,6 +75,25 @@ class SWDB(object):
             cur.close()
 
         return res
+
+
+    def getActivePharmaciesCursor(self):
+        u"""Gets all active pharmacies and returns cursor. For csv export"""
+        query = u"""SELECT o.id, am.jansen_id, o.name, o.strasse, o.plz, o.ort, o.email, 
+                o.telefon1, o.outletart, am.byr_salesforce_id, am.byr_status,
+                am.byr_shelf_details, am.byr_contact_c, 
+                cm.firma1 AS citymanager, o.create_time
+            FROM apo_masterdata am 
+                LEFT JOIN outlet o ON o.id = am.id
+                LEFT JOIN outlet_gebietsleiter og ON og.outlet = o.id
+                LEFT JOIN stammdaten cm ON cm.id = og.gebietsleiter
+            WHERE o.aktiv
+            ORDER BY o.ort, o.name"""
+
+        cur = self.__app.postgresql.cursor()
+        cur.execute(query, {})
+
+        return cur
 
 
     def setOutletStatus(self, id, active):
@@ -111,7 +131,6 @@ class SWDB(object):
             @throws Exception
         """
         query = u"""UPDATE outlet SET aktiv = false WHERE id IN (SELECT id FROM apo_masterdata) OR outletart = 'apotheke'"""
-        self.__app.logger.debug("setAllOutletsInactive() - query = {}".format(query))
 
         try:
             cur = self.__app.postgresql.cursor()
