@@ -37,12 +37,14 @@ class SWDB(object):
         query = u"""SELECT id FROM apo_masterdata WHERE byr_salesforce_id = %(salesforce_id)s"""
         self.__app.logger.debug("SELECT id FROM apo_masterdata WHERE byr_salesforce_id = '{:s}'" . format(id))
 
-        with self.__app.postgresql.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            try:
-                cur.execute(query, { u'salesforce_id': id })
-            except Exception as msg:
-                self.__app.logger.error(msg)
-                sys.exit(u'Exception occured: {}' . format(msg))
+        try:
+            cur = self.__app.postgresql.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cur.execute(query, { u'salesforce_id': id })
+        except Exception as msg:
+            self.__app.logger.error(msg)
+            sys.exit(u'Exception occured: {}' . format(msg))
+        finally:
+            cur.close()
 
         return cur.rowcount > 0
 
@@ -62,12 +64,14 @@ class SWDB(object):
             WHERE o.aktiv
             ORDER BY o.ort, o.name"""
 
-        with self.__app.postgresql.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            try:
-                cur.execute(query, {})
-                res = cur.fetchall()
-            except Exception as msg:
-                self.__app.logger.error(msg)
+        try:
+            cur = self.__app.postgresql.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cur.execute(query, {})
+            res = cur.fetchall()
+        except Exception as msg:
+            self.__app.logger.error(msg)
+        finally:
+            cur.close()
 
         return res
 
@@ -86,12 +90,14 @@ class SWDB(object):
         query = u"""UPDATE outlet SET aktiv = %(active)s 
                 WHERE id = (SELECT id FROM apo_masterdata WHERE byr_salesforce_id = %(id)s)"""
 
-        with self.__app.postgresql.cursor() as cur:
-            try:
-                cur.execute(query, { u'active': active, u'id': id })
-            except Exception, msg:
-                self.__app.logger.error(msg)
-                raise msg
+        try:
+            cur = self.__app.postgresql.cursor()
+            cur.execute(query, { u'active': active, u'id': id })
+        except Exception, msg:
+            self.__app.logger.error(msg)
+            raise msg
+        finally:
+            cur.close()
 
 
     def setAllOutletsInactive(self):
@@ -105,15 +111,16 @@ class SWDB(object):
             @throws Exception
         """
         query = u"""UPDATE outlet SET aktiv = false WHERE id IN (SELECT id FROM apo_masterdata) OR outletart = 'apotheke'"""
+        self.__app.logger.debug("setAllOutletsInactive() - query = {}".format(query))
 
-        with self.__app.postgresql.cursor() as cur:
-            try:
-                cur.execute(query, {})
-            except Exception, msg:
-                self.__app.logger.error(msg)
-                raise msg
-
-        cur.close()
+        try:
+            cur = self.__app.postgresql.cursor()
+            cur.execute(query, {})
+        except Exception, msg:
+            successful = False
+            self.__app.logger.error(u"Exception: {0}: {1}" . format(type(msg), msg.args))
+        finally:
+            cur.close()
 
 
     def insertOutlet(self, record):
@@ -132,14 +139,15 @@ class SWDB(object):
             VALUES (%(pharmacy)s, %(strasse)s, %(plz)s, %(ort)s, (SELECT code FROM bundeslaender WHERE name = %(country)s),
                 %(email)s, %(phone)s, 'apotheke', true) RETURNING id"""
 
-        with self.__app.postgresql.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            try:
-                cur.execute(query, record)
-            except Exception as msg:
-                self.__app.logger.error(msg)
-                raise msg
-
+        cur = self.__app.postgresql.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        try:
+            cur.execute(query, record)
             res = cur.fetchone()['id']
+        except Exception as msg:
+            self.__app.logger.error(msg)
+            raise msg
+        finally:
+            cur.close()
         
         return res
 
@@ -165,16 +173,16 @@ class SWDB(object):
                 %(Shelf_Length__c)s, %(Shelf_Width__c)s, %(Shopper_Termination__c)s,
                 %(Shopper_Termination_Reason__c)s) RETURNING id"""
 
-        with self.__app.postgresql.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            try:
-                cur.execute(query, record)
-            except Exception as msg:
-                self.__app.logger.error(msg)
-                raise msg
-
+        cur = self.__app.postgresql.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        try:
+            cur.execute(query, record)
             res = cur.fetchone()['id']
+        except Exception as msg:
+            self.__app.logger.error(msg)
+            raise msg
+        finally:
+            cur.close()
 
-        cur.close()
         return res
 
 

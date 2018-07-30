@@ -258,10 +258,10 @@ ebenfalls wieder zurückgerollt.""")
         self.postgresql.commit()
 
         try:
-            self.__swdb.setAllOutletsInactive()
+            success = self.__swdb.setAllOutletsInactive()
             u"""Show entries on console"""
-            print(u"Markierte Datensätze in der Salesforce-Datenbank")
             for idx, entry in enumerate(inspections.getInspections()):
+                print(u"idx = {}, entry = {}".format(idx, entry))
                 if not self.options.quiet:
                     print(u"-[{:4d}]-{:s}+{:s}+{:s}" . format(idx, "-"*22, "-"*19, "-"*80))
                     inspections.printRecord(entry)
@@ -273,7 +273,6 @@ ebenfalls wieder zurückgerollt.""")
 
                 self.__swdb.setOutletStatus(entry[u'Shopper_Contract__c'], True)
 
-
             activePharmacies = self.__swdb.getActivePharmacies()
             print(u"\n\nAktive Datensätze in der Sit&Watch-Datenbank nach Abgleich mit Salesforce")
             for cnt, pharmacy in enumerate(sorted(activePharmacies)):
@@ -284,14 +283,15 @@ ebenfalls wieder zurückgerollt.""")
                     elif isinstance(pharmacy[key], (str, unicode)):
                         print(u"{:17s} | {:26s} | {:s}" . format(key, type(pharmacy[key]), pharmacy[key]))
                     elif isinstance(pharmacy[key], (datetime.datetime,)):
-                        print(u"{:17s} | {:26s} | {:s}" . format(key, type(pharmacy[key]), pharmacy[key].strftime("%Y-%m-%dT%H:%M:%SZ")))
+                        print(u"{:17s} | {:26s} | {:s}" . format(key, type(pharmacy[key]), 
+				pharmacy[key].strftime("%Y-%m-%dT%H:%M:%SZ")))
 
             print(u"\n\n{:d} rows found." . format(len(activePharmacies)))
 
 
         except Exception, msg:
             self.postgresql.rollback()
-            self.logger.critical(msg)
+            self.logger.critical(u"Exception: {0}: {1}" . format(type(msg), msg.args))
             print(u"Exception occured -> rollback transaction...")
         else:
             if self.options.commit:
