@@ -79,10 +79,10 @@ class SWDB(object):
 
     def getActivePharmaciesCursor(self):
         u"""Gets all active pharmacies and returns cursor. For csv export"""
-        query = u"""SELECT o.id, am.jansen_id, o.name, o.strasse, o.plz, o.ort, o.email, 
-                o.telefon1, o.outletart, am.byr_salesforce_id, am.byr_status,
-                am.byr_shelf_details, am.byr_contact_c, 
-                cm.firma1 AS citymanager, o.create_time
+        query = u"""SELECT o.id, am.jansen_id, cm.firma1 AS citymanager, cm.id AS citymanager_id, 
+                o.route, o.name, o.strasse, o.plz, o.ort, o.email, o.telefon1, 
+                am.byr_salesforce_id, am.byr_status, am.byr_contact_c, 
+                o.create_time
             FROM apo_masterdata am 
                 LEFT JOIN outlet o ON o.id = am.id
                 LEFT JOIN outlet_gebietsleiter og ON og.outlet = o.id

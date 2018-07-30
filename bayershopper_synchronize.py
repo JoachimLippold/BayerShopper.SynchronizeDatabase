@@ -64,7 +64,8 @@ class App(object):
     Initialisierung, Auswertung der Optionen und Argumente, Verarbeitung der Daten
     """
     APPNAME = os.path.splitext(os.path.abspath(sys.argv[0]))[0]
-    APPVERSION = "1.0.1"
+    APPVERSION = "1.0.2"
+    APPDATE = "30.07.2018"
 
     """ private """
     _instance, _session, _session_id, _sf_instance, _session_id, _sf_instance = (None,)*6
@@ -175,7 +176,7 @@ class App(object):
         USAGE = "usage: %prog [options] tourdate"
         DESCRIPTION = u"""
         """
-        VERSION = self.APPVERSION
+        VERSION = u"Version {0} vom {1}".format(self.APPVERSION, self.APPDATE)
 
         parser = OptionParser(usage=USAGE, version=VERSION, description=DESCRIPTION)
         parser.add_option("-v", "--verbose", dest="verbose", default="ERROR", 
