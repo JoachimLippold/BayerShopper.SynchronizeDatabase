@@ -185,12 +185,11 @@ class SWDB(object):
             @throws Exception
         """
         query = u"""INSERT INTO apo_masterdata (id, byr_sap_id, byr_salesforce_id, byr_name, byr_status,
-                byr_shelf_details, byr_contact_c, byr_is_deleted, byr_active, fwr_height, fwr_width, 
+                byr_shelf_details, byr_contact_c, byr_is_deleted, byr_active, 
                 byr_shopper_termination, byr_shopper_termination_reason)
             VALUES (%(id)s, %(sap_id)s, %(Shopper_Contract__c)s, %(Name)s, %(Status__c)s,
                 %(Shelf_Details__c)s, %(Contact__c)s, %(IsDeleted)s, %(Active__c)s,
-                %(Shelf_Length__c)s, %(Shelf_Width__c)s, %(Shopper_Termination__c)s,
-                %(Shopper_Termination_Reason__c)s) RETURNING id"""
+                %(Shopper_Termination__c)s, %(Shopper_Termination_Reason__c)s) RETURNING id"""
 
         cur = self.__app.postgresql.cursor(cursor_factory=psycopg2.extras.DictCursor)
         try:
@@ -198,6 +197,7 @@ class SWDB(object):
             res = cur.fetchone()['id']
         except Exception as msg:
             self.__app.logger.error(msg)
+            print("record = ", record)
             raise msg
         finally:
             cur.close()
