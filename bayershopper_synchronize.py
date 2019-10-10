@@ -279,12 +279,13 @@ ebenfalls wieder zurückgerollt.""")
                 self.writeActivePharmaciesToStdout()
 
             if logging:
-                self.exportAsCsv()
+                """Aus irgendeinem Grund wir hier eine Exception geworfen!"""
+                #self.exportAsCsv()
 
         except Exception, msg:
             self.postgresql.rollback()
-            self.logger.critical(u"Exception: {0}: {1}" . format(type(msg), msg.args))
-            print(u"Exception occured -> rollback transaction...")
+            self.logger.critical(u"Exception: {0}" . format(repr(msg)))
+            print(u"Exception occured -> rollback transaction {}".format(repr(msg)))
         else:
             if self.options.commit:
                 action = u"commit" 
